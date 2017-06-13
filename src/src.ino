@@ -6,12 +6,8 @@
  * * * * * * * * * * * * * * * * * * * * */
 
 /* TODO
- * bluetooth ?
  * pulldown 100k res for Pins.alarm
- * bluetooth
- * save armed state in EEPROM / flash
  * understand MFRC522 better
- * shrink size
  */
 
 #define DEBUG 1 //use UART for message logging
