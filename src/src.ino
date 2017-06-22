@@ -6,14 +6,14 @@
  * * * * * * * * * * * * * * * * * * * * */
 
 /* TODO
- * pulldown 100k res for Pins.alarm
- * understand MFRC522 better
+ * don't lose armed state on reset (use EEPROM)
  */
 
 #define DEBUG 1 //use UART for message logging
 #define off false
 #define on true
 #define BAUD_RATE 38400
+#define UID_SIZE 4 //there are also some tags with 7 bytes
 
 #include <SPI.h>
 #include <MFRC522.h>
@@ -37,21 +37,23 @@ char * message[MsgCount] = {
     "Disarmed",
 };
 
-MFRC522 mfrc522(Pins.rfid_ss, Pins.rfid_rst); //RFID
+MFRC522 rfid(Pins.rfid_ss, Pins.rfid_rst); //RFID
 
-bool armed = false; //TODO don't lose value on reset
+bool armed = false;
+byte uid[4] = {0x0E, 0x75, 0xFA, 0x71};
 
 void setup()
 {
     pinMode(Pins.vibration, INPUT);
     pinMode(Pins.alarm, OUTPUT);
-    digitalWrite(Pins.alarm, LOW);
+    
+    alarm(off);
     
     DBG_begin(BAUD_RATE);
     DBG_printsln("START");
 
     SPI.begin();
-    mfrc522.PCD_Init();
+    rfid.PCD_Init();
 
     armed = false; //TODO read value from non-volatile memory
     DBG_println(is_armed());
@@ -61,14 +63,24 @@ void setup()
 void loop()
 {
     if (armed && check_movement()) {
-        siren(100); //for testing only
-        //alarm(on); //once deployed it should sound until deactivated
+        //siren(100); //for testing only
+        alarm(on); //once deployed it should sound until deactivated
     }
 
-    if (mfrc522.PICC_IsNewCardPresent()) {
-        if (mfrc522.PICC_ReadCardSerial()) {
-            mfrc522.PICC_DumpToSerial(&(mfrc522.uid)); //takes a while
-            toggle_armed(); //this will also turn off the alarm if it was on already
+    if (rfid.PICC_IsNewCardPresent()) {
+        if (rfid.PICC_ReadCardSerial()) {
+            //rfid.PICC_DumpToSerial(&(rfid.uid)); //takes a while
+            boolean match = true;
+            for (int i = 0; i < UID_SIZE; i++) {
+                //DBG_printf(rfid.uid.uidByte[i], HEX);
+                if (uid[i] != rfid.uid.uidByte[i]) {
+                    match = false;
+                }
+            }
+            if (match) {
+                toggle_armed(); //this will also turn off the alarm if it was on already
+                delay(2000);
+            }
         }
     }
 }
@@ -113,8 +125,9 @@ void alarm(bool state)
 
 void print_commands()
 {
-    //guard with DEBUG
     DBG_printsln("Commands:");
+    DBG_printsln("  a: toggle armed state");
+    DBG_printsln("  s: siren on for 1s");    
     DBG_printsln("  m: show free RAM");
 }
 
@@ -125,10 +138,18 @@ void serialEvent()
 #if DEBUG
     switch (Serial.read()) //one ASCII character command
     {
+        case 'a':
+            toggle_armed();
+        break;
+
         case 'm':
             DBG_prints("Free RAM: ");
             DBG_print(get_free_ram());
             DBG_printsln(" bytes");
+        break;
+
+        case 's':
+            siren(1000);
         break;
 
         default:
